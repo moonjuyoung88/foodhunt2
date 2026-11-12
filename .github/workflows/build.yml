@@ -18,6 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 서명용 Secrets가 등록돼 있는지 (값은 출력하지 않고 유무만) 알려 줍니다.
+      - name: Check signing secrets
+        env:
+          S1: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          S2: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          S3: ${{ secrets.ANDROID_KEY_ALIAS }}
+          S4: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for pair in "ANDROID_KEYSTORE_BASE64:$S1" "ANDROID_KEYSTORE_PASSWORD:$S2" "ANDROID_KEY_ALIAS:$S3" "ANDROID_KEY_PASSWORD:$S4"; do
+            name="${pair%%:*}"; value="${pair#*:}"
+            if [ -n "$value" ]; then echo "secret $name: present (${#value} chars)"; else echo "secret $name: MISSING"; fi
+          done
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
