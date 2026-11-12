@@ -131,7 +131,7 @@ class AlbumPage extends StatelessWidget {
               app.sfx.play('tap');
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => GamePage(app: app, level: lv),
+                  builder: (_) => GamePage(app: app, level: lv, hard: app.hard),
                 ),
               );
             }

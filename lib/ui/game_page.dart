@@ -14,9 +14,17 @@ import 'style.dart';
 enum _Overlay { none, win, fail, pause }
 
 class GamePage extends StatefulWidget {
-  const GamePage({super.key, required this.app, required this.level});
+  const GamePage({
+    super.key,
+    required this.app,
+    required this.level,
+    required this.hard,
+  });
   final AppState app;
   final int level;
+
+  /// 어려움 모드로 시작한 판인지 (판 도중에는 바뀌지 않습니다).
+  final bool hard;
 
   @override
   State<GamePage> createState() => _GamePageState();
@@ -47,7 +55,9 @@ class _GamePageState extends State<GamePage>
   }
 
   void _start() {
-    engine = GameEngine(generateLevel(widget.level, app.themes));
+    engine = GameEngine(
+      generateLevel(widget.level, app.themes, hard: widget.hard),
+    );
     fx = GameFx()..colShift = List<double>.filled(engine.columns.length, 0);
     _total = engine.board.remaining;
     _overlay = _Overlay.none;
@@ -149,10 +159,16 @@ class _GamePageState extends State<GamePage>
           fx.trayAnim[e.critter.id] = (l.grid(x, y), 0.0);
           app.sfx.play('tray', volume: 0.5);
         case WinEvent():
-          _reward = app.completeLevel(widget.level);
+          _reward = app.completeLevel(widget.level, hard: widget.hard);
           app.sfx.play('win');
           app.buzz(strong: true);
           _endTimer = 1.3;
+          statusChanged = true;
+        case WastedLapEvent():
+          fx.shake = 0.6;
+          app.sfx.play('nope', volume: 0.7);
+          app.buzz(strong: true);
+          _toast(app.t('헛걸음! 하트를 잃었어요', 'Wasted lap! You lost a heart'));
           statusChanged = true;
         case FailEvent():
           fx.shake = 1;
@@ -232,6 +248,8 @@ class _GamePageState extends State<GamePage>
     return ok;
   });
 
+  void _addHeart() => _booster(AppState.heartCost, engine.addHeart);
+
   void _toast(String s) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
@@ -250,7 +268,8 @@ class _GamePageState extends State<GamePage>
   void _next() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => GamePage(app: app, level: widget.level + 1),
+        builder: (_) =>
+            GamePage(app: app, level: widget.level + 1, hard: widget.hard),
       ),
     );
   }
@@ -264,8 +283,8 @@ class _GamePageState extends State<GamePage>
         );
       case 2:
         return app.t(
-          '바깥에 드러난 블록만 먹을 수 있어요. 숫자는 먹을 수 있는 양!',
-          'Only exposed blocks can be eaten. The number is how many it can eat',
+          '한 입도 못 먹고 돌아오면 하트를 잃어요. 먹을 게 드러난 색만 보내세요!',
+          'A lap with nothing eaten costs a heart. Send only colors that are exposed!',
         );
       case 3:
         return app.t(
@@ -277,6 +296,13 @@ class _GamePageState extends State<GamePage>
           '대기석의 냠냠이도 톡 하면 다시 출발해요',
           'Tap a nibbler in the tray to send it again',
         );
+    }
+    if (engine.board.sides != Board.allSides &&
+        widget.level <= (widget.hard ? 6 : 11)) {
+      return app.t(
+        '터널 구간에서는 못 먹어요. 열린 쪽에서 보이는 블록만 먹어요',
+        'Nibblers cannot eat inside tunnels. Only open sides count',
+      );
     }
     return null;
   }
@@ -297,12 +323,34 @@ class _GamePageState extends State<GamePage>
                       horizontal: 18,
                       vertical: 4,
                     ),
-                    child: ValueListenableBuilder<int>(
-                      valueListenable: _repaint,
-                      builder: (_, __, ___) => _ProgressBar(
-                        value: 1 - engine.board.remaining / _total,
-                        color: Ui.green,
-                      ),
+                    child: Row(
+                      children: [
+                        for (
+                          var i = 0;
+                          i < max(engine.hearts, engine.level.hearts);
+                          i++
+                        )
+                          Padding(
+                            padding: const EdgeInsets.only(right: 2),
+                            child: Icon(
+                              i < engine.hearts
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              color: i < engine.hearts ? Ui.pink : Ui.textDim,
+                              size: 20,
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: _repaint,
+                            builder: (_, __, ___) => _ProgressBar(
+                              value: 1 - engine.board.remaining / _total,
+                              color: Ui.green,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (_tip != null)
@@ -346,6 +394,7 @@ class _GamePageState extends State<GamePage>
                                 fx: fx,
                                 layout: l,
                                 trayLabel: app.t('대기석', 'TRAY'),
+                                tunnelLabel: app.t('터널', 'TUNNEL'),
                                 repaint: _repaint,
                               ),
                             ),
@@ -380,7 +429,8 @@ class _GamePageState extends State<GamePage>
             child: Column(
               children: [
                 Text(
-                  app.t('레벨 ${widget.level}', 'Level ${widget.level}'),
+                  app.t('레벨 ${widget.level}', 'Level ${widget.level}') +
+                      (widget.hard ? app.t(' · 어려움', ' · Hard') : ''),
                   style: const TextStyle(
                     color: Ui.text,
                     fontWeight: FontWeight.w900,
@@ -603,6 +653,7 @@ class _GamePageState extends State<GamePage>
   }
 
   Widget _failOverlay() {
+    final noHearts = engine.failReason == FailReason.noHearts;
     Widget costRow(String label, int cost) => Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -619,7 +670,12 @@ class _GamePageState extends State<GamePage>
       Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _title(app.t('대기석이 꽉 찼어요', 'Tray overflow!'), Ui.pink),
+          _title(
+            noHearts
+                ? app.t('하트가 다 떨어졌어요', 'Out of hearts!')
+                : app.t('대기석이 꽉 찼어요', 'Tray overflow!'),
+            Ui.pink,
+          ),
           const SizedBox(height: 8),
           Text(
             app.t(
@@ -630,23 +686,34 @@ class _GamePageState extends State<GamePage>
             style: const TextStyle(color: Ui.textDim, fontSize: 14),
           ),
           const SizedBox(height: 18),
-          ChunkyButton(
-            color: Ui.pink,
-            onTap: _clearTray,
-            child: costRow(
-              app.t('싹 비우고 계속', 'Clear tray & continue'),
-              AppState.clearCost,
+          if (noHearts)
+            ChunkyButton(
+              color: Ui.pink,
+              onTap: _addHeart,
+              child: costRow(
+                app.t('하트 +1 하고 계속', 'Heart +1 & continue'),
+                AppState.heartCost,
+              ),
+            )
+          else ...[
+            ChunkyButton(
+              color: Ui.pink,
+              onTap: _clearTray,
+              child: costRow(
+                app.t('싹 비우고 계속', 'Clear tray & continue'),
+                AppState.clearCost,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          ChunkyButton(
-            color: const Color(0xFF9B6BF2),
-            onTap: _addSlot,
-            child: costRow(
-              app.t('자리 +1 하고 계속', 'Slot +1 & continue'),
-              AppState.slotCost,
+            const SizedBox(height: 14),
+            ChunkyButton(
+              color: const Color(0xFF9B6BF2),
+              onTap: _addSlot,
+              child: costRow(
+                app.t('자리 +1 하고 계속', 'Slot +1 & continue'),
+                AppState.slotCost,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [

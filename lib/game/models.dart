@@ -80,6 +80,9 @@ class LevelDef {
     required this.traySize,
     required this.beltCap,
     required this.solution,
+    required this.hearts,
+    this.sides = 15,
+    this.hard = false,
   });
 
   final int level;
@@ -92,4 +95,13 @@ class LevelDef {
 
   /// 생성기가 보장하는 풀이: 순서대로 출발시킬 냠냠이 id.
   final List<int> solution;
+
+  /// 하트 수. 한 바퀴를 돌고도 한 입도 못 먹은 "헛걸음"마다 하나씩 잃고, 다 잃으면 실패입니다.
+  final int hearts;
+
+  /// 열린 면 비트마스크 (왼 1, 위 2, 오른 4, 아래 8). 닫힌 면은 터널입니다.
+  final int sides;
+
+  /// 어려움 모드로 만든 판인지.
+  final bool hard;
 }

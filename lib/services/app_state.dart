@@ -13,7 +13,8 @@ class AppState extends ChangeNotifier {
     : level = _prefs?.getInt('level') ?? 1,
       coins = _prefs?.getInt('coins') ?? 200,
       soundOn = _prefs?.getBool('sound') ?? true,
-      hapticOn = _prefs?.getBool('haptic') ?? true {
+      hapticOn = _prefs?.getBool('haptic') ?? true,
+      hard = _prefs?.getBool('hard') ?? false {
     sfx.enabled = soundOn;
   }
 
@@ -28,10 +29,15 @@ class AppState extends ChangeNotifier {
   bool soundOn;
   bool hapticOn;
 
+  /// 어려움 모드 여부. 새로 시작하는 판부터 적용됩니다.
+  bool hard;
+
   static const int hintCost = 20;
   static const int slotCost = 60;
   static const int clearCost = 100;
+  static const int heartCost = 80;
   static const int winReward = 25;
+  static const int hardWinReward = 45;
   static const int replayReward = 5;
 
   bool get korean => PlatformDispatcher.instance.locale.languageCode == 'ko';
@@ -71,8 +77,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// 레벨 클리어 처리. 받은 코인을 돌려줍니다.
-  int completeLevel(int lv) {
-    final reward = lv >= level ? winReward : replayReward;
+  int completeLevel(int lv, {bool hard = false}) {
+    final reward = lv >= level
+        ? (hard ? hardWinReward : winReward)
+        : replayReward;
     coins += reward;
     if (lv >= level) level = lv + 1;
     _prefs?.setInt('coins', coins);
@@ -85,6 +93,12 @@ class AppState extends ChangeNotifier {
     soundOn = v;
     sfx.enabled = v;
     _prefs?.setBool('sound', v);
+    notifyListeners();
+  }
+
+  void setHard(bool v) {
+    hard = v;
+    _prefs?.setBool('hard', v);
     notifyListeners();
   }
 

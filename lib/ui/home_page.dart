@@ -35,7 +35,7 @@ class _HomePageState extends State<HomePage>
     app.sfx.play('tap');
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => GamePage(app: app, level: app.level),
+        builder: (_) => GamePage(app: app, level: app.level, hard: app.hard),
       ),
     );
   }
@@ -112,6 +112,10 @@ class _HomePageState extends State<HomePage>
             listenable: app,
             builder: (context, _) {
               final theme = app.themeForLevel(app.level);
+              // 화면이 낮은 기기에서는 미리보기를 줄여 버튼이 잘리지 않게 합니다.
+              final previewSize = MediaQuery.of(context).size.height < 740
+                  ? 130.0
+                  : 190.0;
               final cleared = min(app.level - 1, app.themes.length);
               return Column(
                 children: [
@@ -169,9 +173,9 @@ class _HomePageState extends State<HomePage>
                   ),
                   const Spacer(),
                   Container(
-                    width: 190,
-                    height: 190,
-                    padding: const EdgeInsets.all(22),
+                    width: previewSize,
+                    height: previewSize,
+                    padding: EdgeInsets.all(previewSize * 0.115),
                     decoration: BoxDecoration(
                       color: Ui.boardBg,
                       borderRadius: BorderRadius.circular(30),
@@ -205,6 +209,8 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  _DifficultyToggle(app: app),
                   const SizedBox(height: 22),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 44),
@@ -282,4 +288,78 @@ class _ParadePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ParadePainter old) => old.t != t;
+}
+
+/// 노멀 / 어려움 선택. 다음에 시작하는 판부터 적용됩니다.
+class _DifficultyToggle extends StatelessWidget {
+  const _DifficultyToggle({required this.app});
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget seg(bool hard, String label, String sub, Color color) {
+      final on = app.hard == hard;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            app.sfx.play('tap');
+            app.setHard(hard);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? color : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: on ? const Color(0xFF2A2140) : Ui.textDim,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  sub,
+                  style: TextStyle(
+                    color: on ? const Color(0xAA2A2140) : Ui.textDim,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 44),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          seg(
+            false,
+            app.t('노멀', 'Normal'),
+            app.t('하트 3 · 코인 +25', '3 hearts · +25'),
+            Ui.yellow,
+          ),
+          seg(
+            true,
+            app.t('어려움', 'Hard'),
+            app.t('하트 2 · 터널 많음 · 코인 +45', '2 hearts · more tunnels · +45'),
+            Ui.pink,
+          ),
+        ],
+      ),
+    );
+  }
 }

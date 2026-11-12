@@ -82,6 +82,78 @@ class Difficulty {
   }
 }
 
+/// 한 판의 규칙 수치 (대기석·벨트 정원·하트·열린 면).
+class LevelRules {
+  const LevelRules({
+    required this.traySize,
+    required this.beltCap,
+    required this.hearts,
+    required this.openSides,
+  });
+
+  final int traySize;
+  final int beltCap;
+  final int hearts;
+
+  /// 열려 있는 면의 수 (1~4). 나머지 면은 터널이라 지나가기만 합니다.
+  /// 열린 면이 적을수록 한 바퀴에 드러나는 블록이 줄어 순서를 읽어야 풀립니다.
+  final int openSides;
+
+  static LevelRules forLevel(int level, {required bool hard}) {
+    if (hard) {
+      if (level <= 3) {
+        return const LevelRules(
+          traySize: 5,
+          beltCap: 4,
+          hearts: 2,
+          openSides: 4,
+        );
+      }
+      if (level <= 12) {
+        return const LevelRules(
+          traySize: 4,
+          beltCap: 3,
+          hearts: 2,
+          openSides: 2,
+        );
+      }
+      // 네 판에 한 번은 두 면이 열린 숨 고르기 판
+      return LevelRules(
+        traySize: 4,
+        beltCap: 3,
+        hearts: 2,
+        openSides: level % 4 == 0 ? 2 : 1,
+      );
+    }
+    if (level <= 8) {
+      return const LevelRules(traySize: 5, beltCap: 4, hearts: 3, openSides: 4);
+    }
+    if (level <= 20) {
+      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 3);
+    }
+    if (level <= 60) {
+      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 2);
+    }
+    // 다섯 판에 한 번은 한 면만 열린 매운맛 판
+    return LevelRules(
+      traySize: 5,
+      beltCap: 3,
+      hearts: 3,
+      openSides: level % 5 == 0 ? 1 : 2,
+    );
+  }
+}
+
+/// 열린 면 [count]개를 무작위로 골라 비트마스크로 돌려줍니다.
+int pickSides(int count, Random rng) {
+  final all = [Board.left, Board.top, Board.right, Board.bottom]..shuffle(rng);
+  var mask = 0;
+  for (final s in all.take(count)) {
+    mask |= s;
+  }
+  return mask;
+}
+
 class _Plan {
   _Plan(this.id, this.color, this.left);
   final int id;
@@ -98,13 +170,15 @@ class _Plan {
 /// - 가상 플레이 동안 대기석 인원이 [Difficulty.openLimit]을 넘지 않으므로, 기록된 출발 순서가
 ///   곧 대기석이 넘치지 않는 풀이입니다.
 /// - 줄에는 처음 출발한 순서를 지키며 나눠 담아, 풀이에 필요한 냠냠이가 항상 맨 앞에 있게 합니다.
-LevelDef generateLevel(int level, List<ArtTheme> themes) {
+LevelDef generateLevel(int level, List<ArtTheme> themes, {bool hard = false}) {
   final theme = themes[(level - 1) % themes.length];
   final round = (level - 1) ~/ themes.length;
   final diff = Difficulty.forLevel(level);
-  final rng = Random(level * 7919 + round * 104729 + 17);
+  final rng = Random(level * 7919 + round * 104729 + 17 + (hard ? 500009 : 0));
 
-  final board = Board(theme.w, theme.h, theme.cells);
+  final rules = LevelRules.forLevel(level, hard: hard);
+  final sides = pickSides(rules.openSides, rng);
+  final board = Board(theme.w, theme.h, theme.cells, sides: sides);
   final nColors = theme.palette.length;
   final uncommitted = List<int>.filled(nColors, 0);
   for (final c in theme.cells) {
@@ -114,11 +188,7 @@ LevelDef generateLevel(int level, List<ArtTheme> themes) {
   final targetCount = 12 + min(30, level * 0.3);
   final base = max(3.0, board.remaining / targetCount);
 
-  // 대기석과 벨트 정원: 초반은 넉넉하고, 뒤로 갈수록 실수할 여유가 줄어듭니다.
-  // 10레벨마다 대기석이 한 칸 더 적은 "매운맛" 판이 나옵니다.
-  final hard = level > 40 && level % 10 == 0;
-  final traySize = (level <= 20 ? 5 : 4) - (hard ? 1 : 0);
-  final beltCap = level <= 20 ? 5 : (level <= 45 ? 4 : 3);
+  final traySize = rules.traySize;
 
   final tray = <_Plan>[];
   final critters = <Critter>[];
@@ -153,12 +223,12 @@ LevelDef generateLevel(int level, List<ArtTheme> themes) {
     final room = tray.length < min(diff.openLimit, traySize);
     final int color;
     var ammo = (base * (0.6 + rng.nextDouble())).round();
-    if (room && rng.nextDouble() < diff.mergeChance) {
+    if (room && fresh.isNotEmpty && rng.nextDouble() < diff.mergeChance) {
       // 길막이: 아직 덜 드러난(또는 전혀 안 드러난) 색을 들고 나와 대기석에서 오래 기다려야 합니다.
       // 줄을 비우려면 먼저 보내 둘 수밖에 없어서, 대기석을 아껴 써야 하는 이유가 됩니다.
       final cands = [
         for (var c = 0; c < nColors; c++)
-          if (uncommitted[c] > 0) c,
+          if (uncommitted[c] > 0 && eats[c] > 0) c,
       ];
       var total = 0.0;
       final weights = [
@@ -179,6 +249,8 @@ LevelDef generateLevel(int level, List<ArtTheme> themes) {
         }
       }
       color = pick;
+      // 지금 먹을 수 있는 양보다 넉넉히 들려 보내 대기석에서 기다리게 합니다.
+      ammo = max(ammo, eats[color] + max(2, (base * 0.4).round()));
       ammo = min(ammo, uncommitted[color]);
       final rest = uncommitted[color] - ammo;
       if (rest > 0 && rest < 3) ammo += rest;
@@ -256,7 +328,10 @@ LevelDef generateLevel(int level, List<ArtTheme> themes) {
     theme: theme,
     columns: columns,
     traySize: traySize,
-    beltCap: beltCap,
+    beltCap: rules.beltCap,
     solution: solution,
+    hearts: rules.hearts,
+    hard: hard,
+    sides: sides,
   );
 }

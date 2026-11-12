@@ -204,6 +204,7 @@ class GamePainter extends CustomPainter {
     required this.fx,
     required this.layout,
     required this.trayLabel,
+    required this.tunnelLabel,
     required Listenable repaint,
   }) : super(repaint: repaint);
 
@@ -211,6 +212,7 @@ class GamePainter extends CustomPainter {
   final GameFx fx;
   final GameLayout layout;
   final String trayLabel;
+  final String tunnelLabel;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -346,6 +348,78 @@ class GamePainter extends CustomPainter {
         munch: fx.munch[b.critter.id] ?? 0,
         bob: fx.time * 16 + b.critter.id,
       );
+    }
+    // 터널: 닫힌 면의 벨트를 덮습니다. 안을 지나는 냠냠이는 어렴풋이만 보입니다.
+    final sides = engine.board.sides;
+    if (sides != Board.allSides) {
+      final half = cell * 0.95;
+      final segs = <(int, Offset, Offset)>[
+        (Board.left, l.grid(-m, theme.h + 0.0), l.grid(-m, 0)),
+        (Board.top, l.grid(0, -m), l.grid(theme.w + 0.0, -m)),
+        (
+          Board.right,
+          l.grid(theme.w + m, 0),
+          l.grid(theme.w + m, theme.h + 0.0),
+        ),
+        (
+          Board.bottom,
+          l.grid(theme.w + 0.0, theme.h + m),
+          l.grid(0, theme.h + m),
+        ),
+      ];
+      for (final (side, a, b) in segs) {
+        if (sides & side != 0) continue;
+        final r = Rect.fromPoints(a, b).inflate(half);
+        final rr = RRect.fromRectAndRadius(r, Radius.circular(cell * 0.7));
+        paint
+          ..style = PaintingStyle.fill
+          ..color = const Color(0xE6141530);
+        canvas.drawRRect(rr, paint);
+        canvas.save();
+        canvas.clipRRect(rr);
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = cell * 0.5
+          ..color = const Color(0x38FFC93C);
+        final step = cell * 2.2;
+        final vertical = r.height > r.width;
+        final len = vertical ? r.height : r.width;
+        for (var d = -half * 2; d < len + half * 2; d += step) {
+          if (vertical) {
+            canvas.drawLine(
+              Offset(r.left, r.top + d),
+              Offset(r.right, r.top + d + half * 2),
+              paint,
+            );
+          } else {
+            canvas.drawLine(
+              Offset(r.left + d, r.bottom),
+              Offset(r.left + d + half * 2, r.top),
+              paint,
+            );
+          }
+        }
+        canvas.restore();
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = const Color(0x66FFC93C);
+        canvas.drawRRect(rr, paint);
+        paint.style = PaintingStyle.fill;
+        if (len > cell * 8 && cell >= 9) {
+          canvas.save();
+          canvas.translate(r.center.dx, r.center.dy);
+          if (vertical) canvas.rotate(-pi / 2);
+          drawCenteredText(
+            canvas,
+            tunnelLabel,
+            Offset.zero,
+            min(11.0, cell * 0.95),
+            const Color(0xCCFFC93C),
+          );
+          canvas.restore();
+        }
+      }
     }
     canvas.restore();
 

@@ -6,7 +6,8 @@ import 'models.dart';
 /// 왼쪽 면(아래→위), 위쪽 면(왼→오), 오른쪽 면(위→아래), 아래쪽 면(오→왼)을 지납니다.
 /// 정류장마다 그림 안쪽을 바라보고, 가장 바깥에 드러난 블록 하나만 먹을 수 있습니다.
 class Board {
-  Board(this.w, this.h, List<int> cells) : cells = List<int>.of(cells) {
+  Board(this.w, this.h, List<int> cells, {this.sides = allSides})
+    : cells = List<int>.of(cells) {
     remaining = this.cells.where((c) => c >= 0).length;
   }
 
@@ -15,12 +16,22 @@ class Board {
   final List<int> cells;
   late int remaining;
 
+  static const int left = 1, top = 2, right = 4, bottom = 8, allSides = 15;
+
+  /// 냠냠이가 먹을 수 있는 면의 비트마스크. 빠진 면은 벨트가 터널로 덮여 있어 그냥 지나갑니다.
+  final int sides;
+
+  /// 정류장 [s]가 속한 면.
+  int sideOf(int s) =>
+      s < h ? left : (s < h + w ? top : (s < 2 * h + w ? right : bottom));
+
   int get stations => 2 * (w + h);
 
-  Board copy() => Board(w, h, cells);
+  Board copy() => Board(w, h, cells, sides: sides);
 
   /// 정류장 [s]에서 보이는 첫 블록의 인덱스. 없으면 -1.
   int targetAt(int s) {
+    if (sides & sideOf(s) == 0) return -1;
     if (s < h) {
       final row = h - 1 - s;
       for (var x = 0; x < w; x++) {
@@ -112,6 +123,9 @@ class BeltCritter {
   final Critter critter;
   double d = 0;
   int nextStation = 0;
+
+  /// 이번 바퀴에 먹은 수.
+  int eaten = 0;
 }
 
 class PendingCritter {
@@ -153,13 +167,29 @@ class LaunchEvent extends GameEvent {
 
 class WinEvent extends GameEvent {}
 
-class FailEvent extends GameEvent {}
+enum FailReason { trayOverflow, noHearts }
+
+class FailEvent extends GameEvent {
+  FailEvent(this.reason);
+  final FailReason reason;
+}
+
+/// 한 바퀴 동안 한 입도 못 먹고 돌아온 헛걸음.
+class WastedLapEvent extends GameEvent {
+  WastedLapEvent(this.critter);
+  final Critter critter;
+}
 
 /// 한 판의 규칙 전체. Flutter에 의존하지 않아 단위 테스트로 검증합니다.
 class GameEngine {
   GameEngine(LevelDef def)
     : level = def,
-      board = Board(def.theme.w, def.theme.h, def.theme.cells),
+      board = Board(
+        def.theme.w,
+        def.theme.h,
+        def.theme.cells,
+        sides: def.sides,
+      ),
       geo = BeltGeometry(def.theme.w, def.theme.h),
       columns = [
         for (final c in def.columns)
@@ -184,6 +214,10 @@ class GameEngine {
   final List<List<Critter>> columns;
   final List<Critter?> tray;
   final int beltCap;
+
+  /// 남은 하트. 부스터로 늘어날 수 있습니다.
+  late int hearts = level.hearts;
+  FailReason? failReason;
 
   final List<BeltCritter> belt = [];
   final List<PendingCritter> pending = [];
@@ -280,6 +314,7 @@ class GameEngine {
         if (t >= 0 && board.cells[t] == b.critter.color) {
           board.removeAt(t);
           b.critter.ammo--;
+          b.eaten++;
           events.add(EatEvent(t, b.critter.color, b.nextStation, b.critter.id));
         }
         b.nextStation++;
@@ -293,10 +328,20 @@ class GameEngine {
         if (slot < 0) {
           overflow = b.critter;
           status = GameStatus.failed;
-          events.add(FailEvent());
+          failReason = FailReason.trayOverflow;
+          events.add(FailEvent(FailReason.trayOverflow));
         } else {
           tray[slot] = b.critter;
           events.add(ToTrayEvent(b.critter, slot));
+          if (b.eaten == 0) {
+            hearts--;
+            events.add(WastedLapEvent(b.critter));
+            if (hearts <= 0) {
+              status = GameStatus.failed;
+              failReason = FailReason.noHearts;
+              events.add(FailEvent(FailReason.noHearts));
+            }
+          }
         }
       }
       if (status == GameStatus.failed) break;
@@ -352,8 +397,25 @@ class GameEngine {
       any = true;
     }
     if (!any) return false;
-    status = GameStatus.playing;
+    if (failReason != FailReason.noHearts) {
+      status = GameStatus.playing;
+      failReason = null;
+    }
     _checkWin();
+    return true;
+  }
+
+  /// 부스터: 하트 하나 추가. 하트가 바닥나 실패한 상태면 이어서 진행됩니다.
+  bool addHeart() {
+    if (status == GameStatus.won) return false;
+    if (status == GameStatus.failed && failReason != FailReason.noHearts) {
+      return false;
+    }
+    hearts++;
+    if (status == GameStatus.failed) {
+      status = GameStatus.playing;
+      failReason = null;
+    }
     return true;
   }
 
@@ -367,6 +429,7 @@ class GameEngine {
       tray[tray.length - 1] = overflow;
       overflow = null;
       status = GameStatus.playing;
+      failReason = null;
     }
     return true;
   }
@@ -383,7 +446,9 @@ class GameEngine {
     ];
     for (final c in cands) {
       final eaten = board.copy().runLap(c.color, c.ammo);
-      if (eaten == 0) continue;
+      if (eaten == 0) {
+        continue;
+      }
       final score = eaten / c.ammo + eaten * 0.001 + (eaten == c.ammo ? 1 : 0);
       if (score > bestScore) {
         bestScore = score;

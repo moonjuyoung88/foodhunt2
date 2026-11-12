@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pixel_nibblers/game/engine.dart';
@@ -16,8 +17,38 @@ List<ArtTheme> loadThemes() {
   ];
 }
 
+/// 아무 생각 없이 마구 누르는 플레이. 이긴 비율을 돌려줍니다.
+double spamWinRate(List<ArtTheme> themes, {required bool hard}) {
+  var wins = 0, n = 0;
+  for (var lv = 100; lv <= 360; lv += 13) {
+    for (var trial = 0; trial < 3; trial++) {
+      final rng = Random(lv * 100 + trial);
+      final e = GameEngine(generateLevel(lv, themes, hard: hard));
+      var t = 0.0, next = 0.0;
+      while (e.status == GameStatus.playing && t < 900) {
+        e.update(1 / 30);
+        t += 1 / 30;
+        if (t >= next && e.canLaunch) {
+          next = t + 0.35;
+          final opts = <void Function()>[
+            for (var c = 0; c < e.columns.length; c++)
+              if (e.columns[c].isNotEmpty) () => e.tapColumn(c),
+            for (var s = 0; s < e.tray.length; s++)
+              if (e.tray[s] != null) () => e.tapTray(s),
+          ];
+          if (opts.isNotEmpty) opts[rng.nextInt(opts.length)]();
+        }
+      }
+      n++;
+      if (e.status == GameStatus.won) wins++;
+    }
+  }
+  return wins / n;
+}
+
 void main() {
   final themes = loadThemes();
+  final lastLevel = themes.length + 20;
 
   test('테마가 100개 이상이고 id가 겹치지 않는다', () {
     expect(themes.length, greaterThan(100));
@@ -28,55 +59,114 @@ void main() {
     }
   });
 
-  test('모든 레벨: 식사량 합 = 색별 블록 수', () {
-    for (var lv = 1; lv <= themes.length + 20; lv++) {
-      final def = generateLevel(lv, themes);
-      final need = <int, int>{};
-      for (final c in def.theme.cells) {
-        if (c >= 0) need[c] = (need[c] ?? 0) + 1;
-      }
-      final have = <int, int>{};
-      for (final col in def.columns) {
-        for (final k in col) {
-          have[k.color] = (have[k.color] ?? 0) + k.ammo;
+  for (final hard in [false, true]) {
+    final mode = hard ? '어려움' : '노멀';
+
+    test('$mode: 모든 레벨의 식사량 합 = 색별 블록 수', () {
+      for (var lv = 1; lv <= lastLevel; lv++) {
+        final def = generateLevel(lv, themes, hard: hard);
+        final need = <int, int>{};
+        for (final c in def.theme.cells) {
+          if (c >= 0) need[c] = (need[c] ?? 0) + 1;
         }
+        final have = <int, int>{};
+        for (final col in def.columns) {
+          for (final k in col) {
+            have[k.color] = (have[k.color] ?? 0) + k.ammo;
+          }
+        }
+        expect(have, need, reason: 'level $lv');
+        expect(def.sides, inInclusiveRange(1, 15), reason: 'level $lv');
+        expect(def.hearts, hard ? 2 : 3);
       }
-      expect(have, need, reason: 'level $lv');
+    });
+
+    test('$mode: 모든 레벨이 풀린다 (대기석 안 넘치고 하트도 안 잃는 풀이 존재)', () {
+      for (var lv = 1; lv <= lastLevel; lv++) {
+        final def = generateLevel(lv, themes, hard: hard);
+        final e = GameEngine(def);
+        for (final id in def.solution) {
+          if (e.status != GameStatus.playing) break;
+          expect(e.launchById(id), isTrue, reason: 'level $lv: $id 출발 불가');
+          var guard = 0;
+          while (!e.idle &&
+              e.status == GameStatus.playing &&
+              guard++ < 100000) {
+            e.update(1 / 60);
+          }
+        }
+        expect(e.status, GameStatus.won, reason: 'level $lv');
+        expect(e.hearts, def.hearts, reason: 'level $lv: 풀이가 하트를 잃음');
+      }
+    });
+  }
+
+  test('같은 레벨은 언제 만들어도 같은 배치가 나온다', () {
+    for (final lv in [1, 50, 200]) {
+      final a = generateLevel(lv, themes, hard: true);
+      final b = generateLevel(lv, themes, hard: true);
+      expect(a.solution, b.solution);
+      expect(a.sides, b.sides);
     }
   });
 
-  test('모든 레벨: 생성기 풀이를 실제 엔진으로 돌리면 대기석이 넘치지 않고 클리어된다', () {
-    var maxCritters = 0;
-    final counts = <int>[];
-    for (var lv = 1; lv <= themes.length + 20; lv++) {
-      final def = generateLevel(lv, themes);
-      final e = GameEngine(def);
-      var count = 0;
-      for (final c in def.columns) {
-        count += c.length;
-      }
-      if (count > maxCritters) maxCritters = count;
-      counts.add(count);
-      for (final id in def.solution) {
-        if (e.status != GameStatus.playing) break;
-        expect(e.launchById(id), isTrue, reason: 'level $lv: $id 출발 불가');
-        var guard = 0;
-        while (!e.idle && e.status == GameStatus.playing && guard++ < 100000) {
-          e.update(1 / 60);
-        }
-      }
-      expect(e.status, GameStatus.won, reason: 'level $lv');
-    }
+  test('난이도: 마구 누르면 후반 레벨은 대부분 실패한다', () {
+    final normal = spamWinRate(themes, hard: false);
+    final hard = spamWinRate(themes, hard: true);
     // ignore: avoid_print
     print(
-      'max critters: $maxCritters; by level: ${[for (var i = 0; i < counts.length; i += 15) counts[i]]}',
+      '마구 누르기 승률 (레벨 100~360) 노멀 ${(normal * 100).round()}% / 어려움 ${(hard * 100).round()}%',
     );
+    expect(normal, lessThan(0.45));
+    expect(hard, lessThan(0.15));
+    expect(hard, lessThan(normal));
   });
 
-  test('부스터: 대기석 비우기는 균형을 유지한다', () {
-    final def = generateLevel(30, themes);
+  test('터널 면에서는 먹지 못한다', () {
+    // 2x2 한 색 그림, 아래쪽 면만 열림
+    final b = Board(2, 2, [0, 0, 0, 0], sides: Board.bottom);
+    expect(b.runLap(0, 99), 2);
+    expect(b.cells, [-1, -1, 0, 0].reversed.toList());
+  });
+
+  test('헛걸음하면 하트를 잃고, 다 잃으면 실패한다', () {
+    final theme = ArtTheme(
+      id: 't',
+      cat: 'c',
+      ko: 't',
+      en: 't',
+      w: 3,
+      h: 3,
+      palette: const [],
+      // 가운데(1)가 0으로 둘러싸여 있어 1번 색은 처음엔 먹을 수 없음
+      cells: [0, 0, 0, 0, 1, 0, 0, 0, 0],
+    );
+    final def = LevelDef(
+      level: 1,
+      theme: theme,
+      columns: [
+        [Critter(id: 0, color: 1, ammo: 1)],
+        [Critter(id: 1, color: 0, ammo: 8)],
+      ],
+      traySize: 3,
+      beltCap: 3,
+      solution: const [1, 0],
+      hearts: 1,
+    );
     final e = GameEngine(def);
-    // 일부러 아무거나 보내 대기석을 채운다
+    e.tapColumn(0);
+    for (var i = 0; i < 2000 && e.status == GameStatus.playing; i++) {
+      e.update(1 / 60);
+    }
+    expect(e.status, GameStatus.failed);
+    expect(e.failReason, FailReason.noHearts);
+    expect(e.addHeart(), isTrue);
+    expect(e.status, GameStatus.playing);
+  });
+
+  test('부스터: 대기석 비우기는 블록과 식사량의 균형을 유지한다', () {
+    final def = generateLevel(30, themes);
+    final e = GameEngine(def)..hearts = 999;
     for (var i = 0; i < 400 && e.status == GameStatus.playing; i++) {
       e.tapColumn(i % e.columns.length);
       for (var k = 0; k < 30; k++) {
