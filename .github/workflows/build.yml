@@ -52,6 +52,13 @@ jobs:
           flutter build apk --release --build-number=${{ github.run_number }}
           cp build/app/outputs/flutter-apk/app-release.apk pixel-nibblers.apk
 
+      # 어떤 키로 서명됐는지 로그에 남깁니다 (업데이트 호환 여부 확인용).
+      - name: Show signing certificate
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs pixel-nibblers.apk | grep -E "DN|SHA-256"
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then echo "signed-with: release keystore"; else echo "signed-with: debug key"; fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: pixel-nibblers-apk
