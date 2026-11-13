@@ -24,6 +24,21 @@ class ArtTheme {
   /// 행 우선 색 인덱스. 빈 칸은 -1.
   final List<int> cells;
 
+  /// 블록 하나를 [k]x[k]로 키운 같은 그림.
+  ArtTheme scaled(int k) => ArtTheme(
+    id: id,
+    cat: cat,
+    ko: ko,
+    en: en,
+    w: w * k,
+    h: h * k,
+    palette: palette,
+    cells: [
+      for (var y = 0; y < h * k; y++)
+        for (var x = 0; x < w * k; x++) cells[(y ~/ k) * w + x ~/ k],
+    ],
+  );
+
   factory ArtTheme.fromJson(Map<String, dynamic> j) {
     final rows = (j['rows'] as List).cast<String>();
     final cells = <int>[];

@@ -18,9 +18,15 @@ List<ArtTheme> loadThemes() {
 }
 
 /// 아무 생각 없이 마구 누르는 플레이. 이긴 비율을 돌려줍니다.
-double spamWinRate(List<ArtTheme> themes, {required bool hard}) {
+double spamWinRate(
+  List<ArtTheme> themes, {
+  required bool hard,
+  int from = 100,
+  int to = 360,
+  int step = 13,
+}) {
   var wins = 0, n = 0;
-  for (var lv = 100; lv <= 360; lv += 13) {
+  for (var lv = from; lv <= to; lv += step) {
     for (var trial = 0; trial < 3; trial++) {
       final rng = Random(lv * 100 + trial);
       final e = GameEngine(generateLevel(lv, themes, hard: hard));
@@ -120,6 +126,11 @@ void main() {
     expect(normal, lessThan(0.45));
     expect(hard, lessThan(0.15));
     expect(hard, lessThan(normal));
+    // 어려움 모드는 연습 구간이 없어 초반부터 어렵다
+    final hardEarly = spamWinRate(themes, hard: true, from: 1, to: 30, step: 1);
+    // ignore: avoid_print
+    print('어려움 초반(레벨 1~30) 마구 누르기 승률 ${(hardEarly * 100).round()}%');
+    expect(hardEarly, lessThan(0.2));
   });
 
   test('터널 면에서는 먹지 못한다', () {

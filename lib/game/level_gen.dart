@@ -101,25 +101,10 @@ class LevelRules {
 
   static LevelRules forLevel(int level, {required bool hard}) {
     if (hard) {
-      if (level <= 3) {
-        return const LevelRules(
-          traySize: 5,
-          beltCap: 4,
-          hearts: 2,
-          openSides: 4,
-        );
-      }
-      if (level <= 12) {
-        return const LevelRules(
-          traySize: 4,
-          beltCap: 3,
-          hearts: 2,
-          openSides: 2,
-        );
-      }
-      // 네 판에 한 번은 두 면이 열린 숨 고르기 판
+      // 연습 구간 없음: 1레벨부터 한 면만 열립니다. 네 판에 한 번은 두 면이 열린 숨 고르기 판.
       return LevelRules(
-        traySize: 4,
+        // 그림이 작은 초반은 대기석 3칸, 그림이 커지는 31레벨부터 4칸
+        traySize: level <= 30 ? 3 : 4,
         beltCap: 3,
         hearts: 2,
         openSides: level % 4 == 0 ? 2 : 1,
@@ -171,9 +156,14 @@ class _Plan {
 ///   곧 대기석이 넘치지 않는 풀이입니다.
 /// - 줄에는 처음 출발한 순서를 지키며 나눠 담아, 풀이에 필요한 냠냠이가 항상 맨 앞에 있게 합니다.
 LevelDef generateLevel(int level, List<ArtTheme> themes, {bool hard = false}) {
-  final theme = themes[(level - 1) % themes.length];
+  var theme = themes[(level - 1) % themes.length];
+  // 작은 그림은 어려움 모드에서 블록을 2x2로 쪼개 판을 키웁니다 (겹이 두꺼워져 순서가 중요해짐).
+  if (hard && theme.w < 16 && theme.h < 16) theme = theme.scaled(2);
   final round = (level - 1) ~/ themes.length;
-  final diff = Difficulty.forLevel(level);
+  // 어려움 모드는 연습 구간 없이 1레벨부터 후반 레벨의 배치 규칙(줄 4개, 욕심쟁이 냠냠이,
+  // 깜짝 냠냠이)을 그대로 씁니다.
+  final shape = hard ? level + 90 : level;
+  final diff = Difficulty.forLevel(shape);
   final rng = Random(level * 7919 + round * 104729 + 17 + (hard ? 500009 : 0));
 
   final rules = LevelRules.forLevel(level, hard: hard);
@@ -185,7 +175,7 @@ LevelDef generateLevel(int level, List<ArtTheme> themes, {bool hard = false}) {
     if (c >= 0) uncommitted[c]++;
   }
   // 냠냠이 한 마리의 기준 식사량: 레벨이 오를수록 마릿수가 늘어납니다.
-  final targetCount = 12 + min(30, level * 0.3);
+  final targetCount = 12 + min(30, shape * 0.3);
   final base = max(3.0, board.remaining / targetCount);
 
   final traySize = rules.traySize;
