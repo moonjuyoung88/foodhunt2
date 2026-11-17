@@ -52,6 +52,9 @@ double spamWinRate(
   return wins / n;
 }
 
+// 터널을 없앤 뒤의 기준치. 이보다 쉬워지면 실패합니다.
+const kN = 0.6, kH = 0.35, kE = 0.5;
+
 void main() {
   final themes = loadThemes();
   final lastLevel = themes.length + 20;
@@ -83,7 +86,7 @@ void main() {
         }
         expect(have, need, reason: 'level $lv');
         expect(def.sides, inInclusiveRange(1, 15), reason: 'level $lv');
-        expect(def.hearts, hard ? 2 : 3);
+        expect(def.hearts, hard ? 1 : 3);
       }
     });
 
@@ -123,21 +126,21 @@ void main() {
     print(
       '마구 누르기 승률 (레벨 100~360) 노멀 ${(normal * 100).round()}% / 어려움 ${(hard * 100).round()}%',
     );
-    expect(normal, lessThan(0.45));
-    expect(hard, lessThan(0.15));
+    expect(normal, lessThan(kN));
+    expect(hard, lessThan(kH));
     expect(hard, lessThan(normal));
     // 어려움 모드는 연습 구간이 없어 초반부터 어렵다
     final hardEarly = spamWinRate(themes, hard: true, from: 1, to: 30, step: 1);
     // ignore: avoid_print
     print('어려움 초반(레벨 1~30) 마구 누르기 승률 ${(hardEarly * 100).round()}%');
-    expect(hardEarly, lessThan(0.2));
+    expect(hardEarly, lessThan(kE));
   });
 
-  test('터널 면에서는 먹지 못한다', () {
-    // 2x2 한 색 그림, 아래쪽 면만 열림
-    final b = Board(2, 2, [0, 0, 0, 0], sides: Board.bottom);
-    expect(b.runLap(0, 99), 2);
-    expect(b.cells, [-1, -1, 0, 0].reversed.toList());
+  test('모든 레벨에서 네 면이 다 열려 있다 (터널 없음)', () {
+    for (var lv = 1; lv <= lastLevel; lv += 7) {
+      expect(generateLevel(lv, themes).sides, Board.allSides);
+      expect(generateLevel(lv, themes, hard: true).sides, Board.allSides);
+    }
   });
 
   test('헛걸음하면 하트를 잃고, 다 잃으면 실패한다', () {

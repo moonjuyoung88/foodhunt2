@@ -239,19 +239,20 @@ def pixelize(sq, n, maxk, rng, min_de=MIN_DE):
 
 
 def size_for(level):
-    """레벨 → (격자 크기, 최대 색 수, 최소 색 거리). 뒤로 갈수록 크고 색이 많아집니다."""
-    if level <= 4:
-        return 10, 3, MIN_DE
+    """레벨 → (격자 크기, 최대 색 수, 최소 색 거리).
+
+    처음부터 여러 색이 나오도록 초반 그림도 넉넉한 크기와 색 수로 만듭니다.
+    """
     if level <= 12:
-        return 12, 4, MIN_DE
+        return 14, 6, 18
     if level <= 30:
-        return 15, 5, MIN_DE
+        return 16, 7, 18
     if level <= 70:
-        return 18, 6, 20
+        return 18, 7, 18
     if level <= 130:
-        return 21, 7, 18
+        return 21, 8, 17
     if level <= 200:
-        return 24, 8, 16
+        return 24, 9, 16
     return 26, 9, 16
 
 
@@ -270,8 +271,8 @@ def main():
         live.sort(key=lambda c: -len(pools[c]))
         for c in live[:max(6, len(live) // 2)]:
             order.append((c,) + pools[c].pop())
-    # 첫 레벨들은 저해상도에서도 알아보기 쉬운 그림으로 고정
-    starters = ['❤️', '🍎', '⭐', '🍉', '🐤', '🍩', '🐸', '🍓', '🎃', '🍔', '🐼', '🌈']
+    # 첫 레벨들은 알아보기 쉬우면서 색이 다양한 그림으로 고정
+    starters = ['🌈', '🍉', '🍔', '🦜', '🍓', '🧁', '🐠', '🎃', '🍕', '🦄', '🐸', '🍩']
     flat = {t[0]: (c,) + t for c, v in T.items() for t in v}
     order = [flat[s] for s in starters] + order
     seen = set()

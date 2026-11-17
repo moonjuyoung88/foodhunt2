@@ -101,31 +101,19 @@ class LevelRules {
 
   static LevelRules forLevel(int level, {required bool hard}) {
     if (hard) {
-      // 연습 구간 없음: 1레벨부터 한 면만 열립니다. 네 판에 한 번은 두 면이 열린 숨 고르기 판.
-      return LevelRules(
-        // 그림이 작은 초반은 대기석 3칸, 그림이 커지는 31레벨부터 4칸
-        traySize: level <= 30 ? 3 : 4,
-        beltCap: 3,
-        hearts: 2,
-        openSides: level % 4 == 0 ? 2 : 1,
-      );
+      // 연습 구간 없음: 1레벨부터 대기석이 좁습니다.
+      return LevelRules(traySize: 2, beltCap: 3, hearts: 1, openSides: 4);
     }
     if (level <= 8) {
       return const LevelRules(traySize: 5, beltCap: 4, hearts: 3, openSides: 4);
     }
     if (level <= 20) {
-      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 3);
+      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 4);
     }
     if (level <= 60) {
-      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 2);
+      return const LevelRules(traySize: 5, beltCap: 3, hearts: 3, openSides: 4);
     }
-    // 다섯 판에 한 번은 한 면만 열린 매운맛 판
-    return LevelRules(
-      traySize: 5,
-      beltCap: 3,
-      hearts: 3,
-      openSides: level % 5 == 0 ? 1 : 2,
-    );
+    return LevelRules(traySize: 4, beltCap: 3, hearts: 3, openSides: 4);
   }
 }
 

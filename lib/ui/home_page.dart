@@ -355,7 +355,7 @@ class _DifficultyToggle extends StatelessWidget {
           seg(
             true,
             app.t('어려움', 'Hard'),
-            app.t('연습 없음 · 하트 2 · 코인 +45', 'No warm-up · 2 hearts · +45'),
+            app.t('하트 1 · 대기석 2칸 · 코인 +45', '1 heart · 2-slot tray · +45'),
             Ui.pink,
           ),
         ],
